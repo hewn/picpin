@@ -76,8 +76,8 @@ struct Composition {
     var items: [ImageItem] = []           // 顺序即拼接顺序
     var weights: [Double] = []            // 与 items 对齐；空/不齐时按均分处理
     var policies: [UUID: SlicePolicy] = [:]  // 缺省 (fill, .center)
-    var gap: Double = 0                   // 图间距（pt，随画布等比缩放）
-    var margin: Double = 0                // 外边距
+    var gap: Double = 0                   // 图间距，以基准宽 base 为单位的相对值（预览/导出等比缩放）
+    var margin: Double = 0                // 外边距，同上
     var backgroundColor: SwiftUI.Color = .white
 }
 
