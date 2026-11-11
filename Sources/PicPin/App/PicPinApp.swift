@@ -1,11 +1,58 @@
 import SwiftUI
 import AppKit
 
+enum AboutPanel {
+    @MainActor
+    static func show() {
+        let pStyle = NSMutableParagraphStyle()
+        pStyle.alignment = .center
+        pStyle.lineSpacing = 4
+
+        let credits = NSMutableAttributedString(
+            string: "vibe by hewN with GLM & Gemini\nweibo@heptagonal",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: pStyle
+            ]
+        )
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: "PicPin",
+            .applicationVersion: "0.2.0",
+            .version: "Liquid Glass",
+            .credits: credits
+        ])
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // swift run 启动的进程无 bundle，需手动成为正规前台应用
         NSApp.setActivationPolicy(.regular)
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL) {
+            NSApp.applicationIconImage = icon
+        }
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// 点击窗口左上角 × 关闭主窗口时直接退出应用，避免空进程残留后台无法重新唤起
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+
+    /// 点击 Dock / 菜单栏应用图标时，恢复被最小化或隐藏的窗口
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            for window in sender.windows {
+                if window.isMiniaturized {
+                    window.deminiaturize(nil)
+                }
+                window.makeKeyAndOrderFront(nil)
+            }
+        }
+        return true
     }
 }
 
@@ -16,7 +63,15 @@ struct PicPinApp: App {
     var body: some Scene {
         WindowGroup {
             MainWindowView()
-                .frame(minWidth: 960, minHeight: 640)
+                .frame(minWidth: 980, minHeight: 660)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("关于 PicPin") {
+                    AboutPanel.show()
+                }
+            }
         }
     }
 }

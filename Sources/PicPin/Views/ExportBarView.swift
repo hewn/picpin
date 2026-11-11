@@ -6,33 +6,48 @@ struct ExportBarView: View {
     @ObservedObject var store: CompositionStore
     @State private var copied = false
 
+    private var outputDimensionText: String {
+        guard !store.composition.items.isEmpty else { return "" }
+        let w = store.resolvedOutputWidth
+        let h = Int((Double(w) / store.composition.aspectRatio.value).rounded())
+        return "\(w) × \(h) px"
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Picker("格式", selection: $store.exportFormat) {
                 ForEach(ImageExporter.Format.allCases) { f in Text(f.rawValue).tag(f) }
             }
             .pickerStyle(.segmented)
-            .frame(width: 120)
+            .frame(width: 168)
             .labelsHidden()
 
             Picker("宽度", selection: $store.exportWidth) {
-                Text("1080").tag(1080)
-                Text("1242").tag(1242)
-                Text("1440").tag(1440)
-                Text("2048").tag(2048)
-                Text("原始").tag(0)
+                Text("1080w").tag(1080)
+                Text("1242w").tag(1242)
+                Text("1440w").tag(1440)
+                Text("2048w").tag(2048)
+                Text("原始宽").tag(0)
             }
-            .frame(width: 110)
+            .frame(width: 100)
             .labelsHidden()
 
-            Spacer()
+            if !outputDimensionText.isEmpty {
+                Text(outputDimensionText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 12)
 
             Button {
                 copyToClipboard()
             } label: {
-                Label(copied ? "已复制" : "复制到剪贴板",
+                Label(copied ? "已复制" : "复制",
                       systemImage: copied ? "checkmark.circle.fill" : "doc.on.doc")
             }
+            .liquidGlassButtonStyle()
+            .fixedSize()
             .disabled(store.composition.items.isEmpty)
 
             Button {
@@ -40,7 +55,8 @@ struct ExportBarView: View {
             } label: {
                 Label("导出…", systemImage: "square.and.arrow.down")
             }
-            .buttonStyle(.borderedProminent)
+            .liquidGlassButtonStyle(prominent: true)
+            .fixedSize()
             .disabled(store.composition.items.isEmpty)
         }
         .controlSize(.regular)
@@ -63,8 +79,8 @@ struct ExportBarView: View {
         // 先让用户确认保存位置，取消时不做渲染/编码（终审 Important 3）
         let panel = NSSavePanel()
         let format = store.exportFormat
-        panel.allowedContentTypes = [format == .png ? .png : .jpeg]
-        let ext = format == .png ? "png" : "jpg"
+        panel.allowedContentTypes = [format.utType]
+        let ext = format.fileExtension
         panel.nameFieldStringValue = "PicPin-\(Int(Date().timeIntervalSince1970)).\(ext)"
         guard panel.runModal() == .OK, let url = panel.url else { return }
 

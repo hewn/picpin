@@ -10,6 +10,14 @@ final class CompositionStore: ObservableObject {
     @Published var exportWidth: Int = 1242                   // 0 = 原始最大宽度
     @Published var exportFormat: ImageExporter.Format = .png
     @Published var lastIgnoredCount = 0
+    /// 默认勾选：修改策略时同步应用到全部图片；取消勾选时仅作用于当前选中图片
+    @Published var syncPolicyToAll: Bool = true {
+        didSet {
+            if syncPolicyToAll, let sel = selectedID ?? composition.items.first?.id {
+                applyPolicyToAll(from: sel)
+            }
+        }
+    }
 
     /// 追加图片：保留旧条相对比例，新条各占 1/(n+k)；非图片计数到 lastIgnoredCount。
     /// 同步解码版（测试/小批量用）；UI 拖放入口请用 addImagesInBackground。
@@ -54,12 +62,28 @@ final class CompositionStore: ObservableObject {
         lastIgnoredCount = ignored
         guard !loaded.isEmpty else { return }
         var c = composition
+        let templatePolicy: SlicePolicy? = {
+            guard syncPolicyToAll, let refID = selectedID ?? c.items.first?.id else { return nil }
+            var p = c.policy(for: refID)
+            let v = p.alignment.defaultOffset
+            p.customOffsetX = v
+            p.customOffsetY = v
+            return p
+        }()
         let n = c.items.count, k = loaded.count, total = n + k
         var w = c.normalizedWeights.map { $0 * Double(n) / Double(total) }
         w += Array(repeating: 1.0 / Double(total), count: k)
         c.items += loaded
         c.weights = w
+        if let templatePolicy {
+            for item in loaded {
+                c.policies[item.id] = templatePolicy
+            }
+        }
         composition = c
+        if selectedID == nil {
+            selectedID = c.items.first?.id
+        }
     }
 
     func move(from source: IndexSet, to destination: Int) {
@@ -87,8 +111,162 @@ final class CompositionStore: ObservableObject {
         composition.weights = []                              // 均分兜底
     }
 
+    func clearAll() {
+        composition.items = []
+        composition.weights = []
+        composition.policies = [:]
+        selectedID = nil
+        lastIgnoredCount = 0
+    }
+
+    func removeSelected() {
+        guard let sel = selectedID,
+              let idx = composition.items.firstIndex(where: { $0.id == sel }) else { return }
+        remove(at: IndexSet(integer: idx))
+    }
+
+    func openImagePicker() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.prompt = "导入"
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+        addImagesInBackground(from: panel.urls)
+    }
+
     func setBoundary(_ index: Int, share: Double) {
         composition.setBoundary(index, share: share)
+    }
+
+    func setMode(_ mode: FitMode, for id: UUID) {
+        if syncPolicyToAll {
+            var policies = composition.policies
+            for item in composition.items {
+                var p = composition.policy(for: item.id)
+                p.mode = mode
+                policies[item.id] = p
+            }
+            composition.policies = policies
+        } else {
+            var p = composition.policy(for: id)
+            p.mode = mode
+            composition.policies[id] = p
+        }
+    }
+
+    func setAlignment(_ alignment: CropAlignment, for id: UUID) {
+        let v = alignment.defaultOffset
+        if syncPolicyToAll {
+            var policies = composition.policies
+            for item in composition.items {
+                var p = composition.policy(for: item.id)
+                p.alignment = alignment
+                p.customOffsetX = v
+                p.customOffsetY = v
+                policies[item.id] = p
+            }
+            composition.policies = policies
+        } else {
+            var p = composition.policy(for: id)
+            p.alignment = alignment
+            p.customOffsetX = v
+            p.customOffsetY = v
+            composition.policies[id] = p
+        }
+    }
+
+    func resetOffset(for id: UUID) {
+        var p = composition.policy(for: id)
+        let v = p.alignment.defaultOffset
+        p.customOffsetX = v
+        p.customOffsetY = v
+        composition.policies[id] = p
+    }
+
+    /// 获取某张图片当前的等效自定义缩放倍率（1.0 = 100%）
+    func currentEffectiveScale(for id: UUID) -> Double {
+        let p = composition.policy(for: id)
+        if p.mode == .custom {
+            return p.customScale
+        }
+        let layout = LayoutEngine.layout(composition)
+        if let placement = layout.placements.first(where: { $0.itemID == id }) {
+            return placement.effectiveRelativeScale
+        }
+        return 1.0
+    }
+
+    /// 设置自定义缩放倍率（自动切换为 .custom 模式；遵循 syncPolicyToAll）
+    func setCustomScale(_ scale: Double, for id: UUID) {
+        let clamped = max(0.01, scale)
+        if syncPolicyToAll {
+            var policies = composition.policies
+            for item in composition.items {
+                var p = composition.policy(for: item.id)
+                p.mode = .custom
+                p.customScale = clamped
+                policies[item.id] = p
+            }
+            composition.policies = policies
+        } else {
+            var p = composition.policy(for: id)
+            p.mode = .custom
+            p.customScale = clamped
+            composition.policies[id] = p
+        }
+    }
+
+    /// 键盘快捷键 + / - 步进调整图片大小（不受 10%~400% 限制）
+    func stepCustomScale(increase: Bool) {
+        guard let targetID = selectedID ?? composition.items.first?.id else { return }
+        let current = currentEffectiveScale(for: targetID)
+        let next: Double
+        if increase {
+            next = current < 0.2 ? current * 1.2 : current + 0.1
+        } else {
+            next = current <= 0.2 ? max(0.01, current / 1.2) : max(0.01, current - 0.1)
+        }
+        setCustomScale(next, for: targetID)
+    }
+
+    func applyPolicyToAll(from sourceID: UUID) {
+        var basePolicy = composition.policy(for: sourceID)
+        let v = basePolicy.alignment.defaultOffset
+        basePolicy.customOffsetX = v
+        basePolicy.customOffsetY = v
+        var policies = composition.policies
+        for item in composition.items {
+            policies[item.id] = basePolicy
+        }
+        composition.policies = policies
+    }
+
+    /// 在画布中拖动单张小图调整位置（1:1 跟手平移，支持 fill / fit / custom 任意缩放状态）
+    func panImage(_ id: UUID,
+                  baseOffsets: (x: Double, y: Double),
+                  deltaCanvas: CGSize,
+                  placement: SlicePlacement) {
+        var p = composition.policy(for: id)
+        var newX = baseOffsets.x
+        var newY = baseOffsets.y
+        let eps = 0.5
+        let diffX = Double(placement.imageFrame.width - placement.destination.width)
+        if diffX > eps {
+            newX = min(max(baseOffsets.x - Double(deltaCanvas.width) / diffX, 0), 1)
+        } else if -diffX > eps {
+            newX = min(max(baseOffsets.x + Double(deltaCanvas.width) / (-diffX), 0), 1)
+        }
+
+        let diffY = Double(placement.imageFrame.height - placement.destination.height)
+        if diffY > eps {
+            newY = min(max(baseOffsets.y - Double(deltaCanvas.height) / diffY, 0), 1)
+        } else if -diffY > eps {
+            newY = min(max(baseOffsets.y + Double(deltaCanvas.height) / (-diffY), 0), 1)
+        }
+        p.customOffsetX = newX
+        p.customOffsetY = newY
+        composition.policies[id] = p
     }
 
     var resolvedOutputWidth: Int {

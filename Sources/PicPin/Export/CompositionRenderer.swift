@@ -18,13 +18,19 @@ enum CompositionRenderer {
         ctx.interpolationQuality = .high
         for p in layout.placements {
             guard let item = c.items.first(where: { $0.id == p.itemID }) else { continue }
-            let img = p.sourceRect.flatMap { item.cgImage.cropping(to: $0) } ?? item.cgImage
-            // 布局左上原点 → CG 左下原点
-            let rect = CGRect(x: p.fittedFrame.minX * scale,
-                              y: CGFloat(H) - (p.fittedFrame.minY + p.fittedFrame.height) * scale,
-                              width: p.fittedFrame.width * scale,
-                              height: p.fittedFrame.height * scale)
-            ctx.draw(img, in: rect)
+            // 布局左上原点 → CG 左下原点；通过条带 clip + 完整等比 imageFrame 绘制，消除像素取整拉伸误差
+            let destRect = CGRect(x: p.destination.minX * scale,
+                                  y: CGFloat(H) - (p.destination.minY + p.destination.height) * scale,
+                                  width: p.destination.width * scale,
+                                  height: p.destination.height * scale)
+            let imgRect = CGRect(x: p.imageFrame.minX * scale,
+                                 y: CGFloat(H) - (p.imageFrame.minY + p.imageFrame.height) * scale,
+                                 width: p.imageFrame.width * scale,
+                                 height: p.imageFrame.height * scale)
+            ctx.saveGState()
+            ctx.clip(to: destRect)
+            ctx.draw(item.cgImage, in: imgRect)
+            ctx.restoreGState()
         }
         return ctx.makeImage()
     }

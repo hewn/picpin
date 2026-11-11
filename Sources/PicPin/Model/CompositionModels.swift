@@ -8,14 +8,27 @@ enum StitchDirection: String, CaseIterable, Identifiable {
 }
 
 enum FitMode: String, CaseIterable, Identifiable {
-    case fill, fit
+    case fill, fit, custom
     var id: String { rawValue }
-    var label: String { self == .fill ? "等比放大撑满" : "完整显示（留白）" }
+    var label: String {
+        switch self {
+        case .fill: return "等比撑满"
+        case .fit: return "完整留白"
+        case .custom: return "自定义"
+        }
+    }
 }
 
 enum CropAlignment: String, CaseIterable, Identifiable {
     case start, center, end
     var id: String { rawValue }
+    var defaultOffset: Double {
+        switch self {
+        case .start: return 0.0
+        case .center: return 0.5
+        case .end: return 1.0
+        }
+    }
     func label(for direction: StitchDirection) -> String {
         switch (self, direction) {
         case (.start, .vertical): return "保留顶部"
@@ -31,6 +44,16 @@ enum CropAlignment: String, CaseIterable, Identifiable {
 struct SlicePolicy: Equatable {
     var mode: FitMode = .fill
     var alignment: CropAlignment = .center
+    /// 自定义缩放倍率（1.0 = 100%，以条带内完整显示尺寸为 100% 基准；支持任意正数倍缩放）
+    var customScale: Double = 1.0
+    /// 归一化位置偏移 [0, 1]（0 = 顶/左，0.5 = 居中，1 = 底/右）。
+    /// nil 表示未手动微调，由 LayoutEngine 按 alignment 与方向计算。
+    var customOffsetX: Double? = nil
+    var customOffsetY: Double? = nil
+
+    var hasCustomOffset: Bool {
+        customOffsetX != nil || customOffsetY != nil
+    }
 }
 
 struct AspectRatio: Identifiable, Hashable {

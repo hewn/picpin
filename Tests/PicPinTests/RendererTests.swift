@@ -74,11 +74,14 @@ final class RendererTests: XCTestCase {
         XCTAssertTrue(isColor(rgba(out, 200, 100), (0, 0, 0)), "红条上方 (y=100) 应为黑背景")
     }
 
-    func testEncodePNGAndJPEG() throws {
-        let img = TestSupport.makeImage(width: 10, height: 10, color: (0.5, 0.5, 0.5))
+    func testEncodePNGAndJPEGAndHEIC() throws {
+        let img = TestSupport.makeImage(width: 64, height: 64, color: (0.5, 0.5, 0.5))
         let png = try XCTUnwrap(ImageExporter.encode(img, format: .png))
         XCTAssertEqual(png.prefix(8), Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
         let jpeg = try XCTUnwrap(ImageExporter.encode(img, format: .jpeg))
         XCTAssertGreaterThan(jpeg.count, 100)
+        let heic = try XCTUnwrap(ImageExporter.encode(img, format: .heic))
+        XCTAssertGreaterThan(heic.count, 100)
+        XCTAssertEqual(ImageExporter.Format.heic.fileExtension, "heic")
     }
 }

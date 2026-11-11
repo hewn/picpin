@@ -4,9 +4,18 @@ import Foundation
 struct ImageItem: Identifiable {
     let id: UUID
     let cgImage: CGImage        // 已按 EXIF 方向规范化的原图
-    let thumbnail: CGImage      // 预览用缩略图（最长边 ≤ 1200）
+    let thumbnail: CGImage      // 预览用缩略图（最长边 ≤ 1200，已后台预解码）
+    let listIcon: CGImage       // 左栏列表用轻量微缩图（最长边 ≤ 120）
     let fileName: String
     var pixelSize: CGSize { CGSize(width: cgImage.width, height: cgImage.height) }
+
+    init(id: UUID, cgImage: CGImage, thumbnail: CGImage, listIcon: CGImage? = nil, fileName: String) {
+        self.id = id
+        self.cgImage = cgImage
+        self.thumbnail = thumbnail
+        self.listIcon = listIcon ?? thumbnail
+        self.fileName = fileName
+    }
 
     /// 将原图像素坐标的裁剪 rect 映射到缩略图像素坐标（逐轴缩放）。
     /// LayoutEngine 的 sourceRect 是原图像素单位；预览用缩略图渲染时必须换算，

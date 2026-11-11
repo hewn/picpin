@@ -6,8 +6,12 @@ swift build -c release
 
 APP="build/PicPin.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$(swift build -c release --show-bin-path)/PicPin" "$APP/Contents/MacOS/PicPin"
+
+if [[ -f "Resources/AppIcon.icns" ]]; then
+    cp "Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+fi
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -18,9 +22,11 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleDisplayName</key><string>PicPin</string>
     <key>CFBundleIdentifier</key><string>local.picpin</string>
     <key>CFBundleExecutable</key><string>PicPin</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>0.2.0</string>
+    <key>CFBundleVersion</key><string>2</string>
+    <key>NSHumanReadableCopyright</key><string>vibe by hewN with GLM &amp; Gemini | weibo@heptagonal</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSSupportsAutomaticTermination</key><false/>
@@ -28,6 +34,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+touch "$APP"
 
 echo "打包完成：$APP"
 echo "首次打开：右键 → 打开（未签名 app）"

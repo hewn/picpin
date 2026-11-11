@@ -6,6 +6,25 @@ struct SlicePlacement: Equatable {
     let destination: CGRect   // 左上原点，归一化画布坐标（宽 = LayoutEngine.base）
     let sourceRect: CGRect?   // CGImage 像素坐标（左上原点）；nil = 整图无裁剪
     let fittedFrame: CGRect   // fill == destination；fit 为条带内实际图像 frame（四周留白）
+    let imageFrame: CGRect    // 图像按原图宽高比等比缩放后的完整画布坐标 frame（由 destination 裁剪）
+    let offsetX: Double       // 当前生效的水平归一化偏移 [0, 1]
+    let offsetY: Double       // 当前生效的垂直归一化偏移 [0, 1]
+
+    init(itemID: UUID,
+         destination: CGRect,
+         sourceRect: CGRect?,
+         fittedFrame: CGRect,
+         imageFrame: CGRect? = nil,
+         offsetX: Double = 0.5,
+         offsetY: Double = 0.5) {
+        self.itemID = itemID
+        self.destination = destination
+        self.sourceRect = sourceRect
+        self.fittedFrame = fittedFrame
+        self.imageFrame = imageFrame ?? fittedFrame
+        self.offsetX = offsetX
+        self.offsetY = offsetY
+    }
 
     /// 图像在条带（destination）局部坐标系中的 frame——供条带局部渲染的视图使用
     ///（终审 Critical 1：嵌套 .position 必须用条带内相对坐标，而非画布绝对坐标）
@@ -14,6 +33,32 @@ struct SlicePlacement: Equatable {
                y: fittedFrame.minY - destination.minY,
                width: fittedFrame.width,
                height: fittedFrame.height)
+    }
+
+    /// 完整等比图像在条带（destination）局部坐标系中的 frame（配合条带 .clipped() 彻底避免裁剪取整导致的拉伸）
+    var localImageFrame: CGRect {
+        CGRect(x: imageFrame.minX - destination.minX,
+               y: imageFrame.minY - destination.minY,
+               width: imageFrame.width,
+               height: imageFrame.height)
+    }
+
+    /// 当前条带内图像主要可移动的轴（用于 UI 展示对齐方向与拖动提示）
+    func activeAxis(fallback: StitchDirection) -> StitchDirection {
+        let dx = abs(imageFrame.width - destination.width)
+        let dy = abs(imageFrame.height - destination.height)
+        if dx > 0.5 && dy <= 0.5 { return .horizontal }
+        if dy > 0.5 && dx <= 0.5 { return .vertical }
+        return fallback
+    }
+
+    /// 当前图像相对于条带完整显示（fit 100%）的等效缩放倍率
+    var effectiveRelativeScale: Double {
+        guard destination.width > 0, destination.height > 0,
+              imageFrame.width > 0, imageFrame.height > 0 else { return 1.0 }
+        let fitScale = min(destination.width / imageFrame.width, destination.height / imageFrame.height)
+        guard fitScale > 0 else { return 1.0 }
+        return Double(1.0 / fitScale)
     }
 }
 
@@ -65,9 +110,6 @@ enum LayoutEngine {
     }
 
     /// 单条带内几何。坐标系：左上原点。
-    /// fill：scale = max(...)，比值大的轴恰好贴合、另一轴溢出：
-    ///   - 主轴（对齐生效轴：垂直→y，水平→x）溢出 → 按 policy.alignment 裁剪（本任务实现）
-    ///   - 副轴溢出 → 居中裁剪（Task 4 测试驱动补上）
     private static func placement(item: ImageItem, policy: SlicePolicy,
                                   strip: CGRect, direction: StitchDirection) -> SlicePlacement {
         let imgW = CGFloat(item.cgImage.width)
@@ -75,50 +117,99 @@ enum LayoutEngine {
         guard imgW > 0, imgH > 0, strip.width > 0, strip.height > 0 else {
             return SlicePlacement(itemID: item.id, destination: strip, sourceRect: nil, fittedFrame: strip)
         }
+        let ox = min(max(policy.customOffsetX ?? (direction == .horizontal ? policy.alignment.defaultOffset : 0.5), 0), 1)
+        let oy = min(max(policy.customOffsetY ?? (direction == .vertical ? policy.alignment.defaultOffset : 0.5), 0), 1)
+
         switch policy.mode {
         case .fill:
             let scale = max(strip.width / imgW, strip.height / imgH)
+            let drawW = imgW * scale
+            let drawH = imgH * scale
+            let overflowX = max(0, drawW - strip.width)
+            let overflowY = max(0, drawH - strip.height)
+            let imgFrame = CGRect(
+                x: strip.minX - CGFloat(ox) * overflowX,
+                y: strip.minY - CGFloat(oy) * overflowY,
+                width: drawW,
+                height: drawH
+            )
             let eps: CGFloat = 0.5                          // 归一化单位下的显示容差
             var srcX: CGFloat = 0, srcY: CGFloat = 0
             var srcW = imgW, srcH = imgH
             var cropped = false
-            // 主轴：垂直→y（对齐策略），水平→x
-            if direction == .vertical, imgH * scale > strip.height + eps {
+            if overflowY > eps {
                 srcH = strip.height / scale
-                srcY = axisOrigin(alignment: policy.alignment, imageLen: imgH, keepLen: srcH)
+                srcY = CGFloat(oy) * (imgH - srcH)
                 cropped = true
             }
-            if direction == .horizontal, imgW * scale > strip.width + eps {
+            if overflowX > eps {
                 srcW = strip.width / scale
-                srcX = axisOrigin(alignment: policy.alignment, imageLen: imgW, keepLen: srcW)
-                cropped = true
-            }
-            // 副轴（对齐不生效）：溢出时居中裁剪
-            if direction == .vertical, imgW * scale > strip.width + eps {
-                srcW = strip.width / scale
-                srcX = (imgW - srcW) / 2
-                cropped = true
-            }
-            if direction == .horizontal, imgH * scale > strip.height + eps {
-                srcH = strip.height / scale
-                srcY = (imgH - srcH) / 2
+                srcX = CGFloat(ox) * (imgW - srcW)
                 cropped = true
             }
             let src = cropped ? CGRect(x: srcX, y: srcY, width: srcW, height: srcH) : nil
-            return SlicePlacement(itemID: item.id, destination: strip, sourceRect: src, fittedFrame: strip)
+            return SlicePlacement(itemID: item.id, destination: strip, sourceRect: src,
+                                  fittedFrame: strip, imageFrame: imgFrame,
+                                  offsetX: ox, offsetY: oy)
         case .fit:
             let scale = min(strip.width / imgW, strip.height / imgH)
             let w = imgW * scale, h = imgH * scale
-            let frame = CGRect(x: strip.midX - w / 2, y: strip.midY - h / 2, width: w, height: h)
-            return SlicePlacement(itemID: item.id, destination: strip, sourceRect: nil, fittedFrame: frame)
-        }
-    }
+            let slackX = max(0, strip.width - w)
+            let slackY = max(0, strip.height - h)
+            let frame = CGRect(
+                x: strip.minX + CGFloat(ox) * slackX,
+                y: strip.minY + CGFloat(oy) * slackY,
+                width: w,
+                height: h
+            )
+            return SlicePlacement(itemID: item.id, destination: strip, sourceRect: nil,
+                                  fittedFrame: frame, imageFrame: frame,
+                                  offsetX: ox, offsetY: oy)
+        case .custom:
+            let baseScale = min(strip.width / imgW, strip.height / imgH)
+            let userScale = max(0.01, CGFloat(policy.customScale))
+            let scale = baseScale * userScale
+            let drawW = imgW * scale
+            let drawH = imgH * scale
 
-    private static func axisOrigin(alignment: CropAlignment, imageLen: CGFloat, keepLen: CGFloat) -> CGFloat {
-        switch alignment {
-        case .start: return 0
-        case .center: return (imageLen - keepLen) / 2
-        case .end: return imageLen - keepLen
+            let imgX: CGFloat
+            if drawW <= strip.width {
+                imgX = strip.minX + CGFloat(ox) * (strip.width - drawW)
+            } else {
+                imgX = strip.minX - CGFloat(ox) * (drawW - strip.width)
+            }
+
+            let imgY: CGFloat
+            if drawH <= strip.height {
+                imgY = strip.minY + CGFloat(oy) * (strip.height - drawH)
+            } else {
+                imgY = strip.minY - CGFloat(oy) * (drawH - strip.height)
+            }
+
+            let imgFrame = CGRect(x: imgX, y: imgY, width: drawW, height: drawH)
+            let visible = imgFrame.intersection(strip)
+            let fitted = visible.isNull ? CGRect(x: strip.midX, y: strip.midY, width: 0, height: 0) : visible
+
+            let eps: CGFloat = 0.5
+            let overflowX = max(0, drawW - strip.width)
+            let overflowY = max(0, drawH - strip.height)
+            var srcX: CGFloat = 0, srcY: CGFloat = 0
+            var srcW = imgW, srcH = imgH
+            var cropped = false
+            if overflowY > eps {
+                srcH = strip.height / scale
+                srcY = CGFloat(oy) * (imgH - srcH)
+                cropped = true
+            }
+            if overflowX > eps {
+                srcW = strip.width / scale
+                srcX = CGFloat(ox) * (imgW - srcW)
+                cropped = true
+            }
+            let src = cropped ? CGRect(x: srcX, y: srcY, width: srcW, height: srcH) : nil
+            return SlicePlacement(itemID: item.id, destination: strip, sourceRect: src,
+                                  fittedFrame: fitted, imageFrame: imgFrame,
+                                  offsetX: ox, offsetY: oy)
         }
     }
 }

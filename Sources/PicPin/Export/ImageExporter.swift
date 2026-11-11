@@ -5,17 +5,36 @@ import UniformTypeIdentifiers
 
 enum ImageExporter {
     enum Format: String, CaseIterable, Identifiable {
-        case png = "PNG", jpeg = "JPEG"
+        case png = "PNG", jpeg = "JPEG", heic = "HEIC"
         var id: String { rawValue }
+
+        var utType: UTType {
+            switch self {
+            case .png: return .png
+            case .jpeg: return .jpeg
+            case .heic: return .heic
+            }
+        }
+
+        var fileExtension: String {
+            switch self {
+            case .png: return "png"
+            case .jpeg: return "jpg"
+            case .heic: return "heic"
+            }
+        }
     }
 
     static func encode(_ image: CGImage, format: Format) -> Data? {
-        let ut: UTType = format == .png ? .png : .jpeg
         let out = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(out, ut.identifier as CFString, 1, nil) else { return nil }
-        let props: [CFString: Any] = format == .jpeg
-            ? [kCGImageDestinationLossyCompressionQuality: 0.92]
-            : [:]
+        guard let dest = CGImageDestinationCreateWithData(out, format.utType.identifier as CFString, 1, nil) else { return nil }
+        let props: [CFString: Any]
+        switch format {
+        case .png:
+            props = [:]
+        case .jpeg, .heic:
+            props = [kCGImageDestinationLossyCompressionQuality: 0.92]
+        }
         CGImageDestinationAddImage(dest, image, props as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { return nil }
         return out as Data
