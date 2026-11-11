@@ -112,7 +112,7 @@ struct InspectorView: View {
             sectionTitle("画布")
             LabeledContent("背景色") {
                 ColorPicker("", selection: Binding(
-                    get: { Color(cgColor: store.composition.backgroundColor) ?? .white },
+                    get: { Color(cgColor: store.composition.backgroundColor) },
                     set: { store.composition.backgroundColor = NSColor($0).cgColor }),
                     supportsOpacity: false)
                     .labelsHidden()

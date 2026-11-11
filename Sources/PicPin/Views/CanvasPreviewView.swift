@@ -14,35 +14,51 @@ struct CanvasPreviewView: View {
                 Color(nsColor: .windowBackgroundColor)
                 if !store.composition.items.isEmpty {
                     ScrollView([.vertical, .horizontal]) {
-                        ZStack(alignment: .topLeading) {
-                            Rectangle()
-                                .fill(Color(cgColor: store.composition.backgroundColor))
-                            ForEach(layout.placements, id: \.itemID) { p in
-                                placementView(p, scale: scale)
-                            }
-                            boundaryHandles(layout: layout, scale: scale)
-                        }
-                        .frame(width: layout.canvasSize.width * scale,
-                               height: layout.canvasSize.height * scale)
+                        CanvasContentView(store: store, layout: layout, scale: scale,
+                                          dragBase: $dragBase)
+                            .frame(width: layout.canvasSize.width * scale,
+                                   height: layout.canvasSize.height * scale)
                     }
                 }
             }
         }
     }
+}
+
+/// 画布本体（ScrollView 内容）：条带渲染 + 边界手柄。
+/// 独立成视图以便 ImageRenderer 直接渲染做回归测试（ScrollView 离屏不渲染）。
+struct CanvasContentView: View {
+    @ObservedObject var store: CompositionStore
+    let layout: LayoutResult
+    let scale: CGFloat
+    @Binding var dragBase: (pairSum: Double, share: Double)?
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle()
+                .fill(Color(cgColor: store.composition.backgroundColor))
+            ForEach(layout.placements, id: \.itemID) { p in
+                placementView(p)
+            }
+            boundaryHandles
+        }
+    }
 
     @ViewBuilder
-    private func placementView(_ p: SlicePlacement, scale: CGFloat) -> some View {
+    private func placementView(_ p: SlicePlacement) -> some View {
         let item = store.composition.items.first { $0.id == p.itemID }
         let selected = store.selectedID == p.itemID
         ZStack {
             if let item {
-                let img = p.sourceRect.flatMap { item.thumbnail.cropping(to: $0) } ?? item.thumbnail
+                // sourceRect 是原图像素坐标，裁剪缩略图前必须映射（终审 Critical 2）
+                let img = p.sourceRect.flatMap { item.thumbnail.cropping(to: item.thumbnailSourceRect(from: $0)) }
+                    ?? item.thumbnail
+                let local = p.localFittedFrame   // 条带内相对坐标（终审 Critical 1）
                 Image(decorative: img, scale: 1)
                     .resizable()
-                    .frame(width: p.fittedFrame.width * scale,
-                           height: p.fittedFrame.height * scale)
-                    .position(x: p.fittedFrame.midX * scale,
-                              y: p.fittedFrame.midY * scale)
+                    .frame(width: local.width * scale,
+                           height: local.height * scale)
+                    .position(x: local.midX * scale, y: local.midY * scale)
             }
         }
         .frame(width: p.destination.width * scale,
@@ -57,7 +73,7 @@ struct CanvasPreviewView: View {
     }
 
     @ViewBuilder
-    private func boundaryHandles(layout: LayoutResult, scale: CGFloat) -> some View {
+    private var boundaryHandles: some View {
         let n = store.composition.items.count
         let vertical = store.composition.direction == .vertical
         ForEach(0..<max(0, n - 1), id: \.self) { i in

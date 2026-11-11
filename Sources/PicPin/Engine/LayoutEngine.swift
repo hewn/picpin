@@ -6,6 +6,15 @@ struct SlicePlacement: Equatable {
     let destination: CGRect   // 左上原点，归一化画布坐标（宽 = LayoutEngine.base）
     let sourceRect: CGRect?   // CGImage 像素坐标（左上原点）；nil = 整图无裁剪
     let fittedFrame: CGRect   // fill == destination；fit 为条带内实际图像 frame（四周留白）
+
+    /// 图像在条带（destination）局部坐标系中的 frame——供条带局部渲染的视图使用
+    ///（终审 Critical 1：嵌套 .position 必须用条带内相对坐标，而非画布绝对坐标）
+    var localFittedFrame: CGRect {
+        CGRect(x: fittedFrame.minX - destination.minX,
+               y: fittedFrame.minY - destination.minY,
+               width: fittedFrame.width,
+               height: fittedFrame.height)
+    }
 }
 
 struct LayoutResult: Equatable {

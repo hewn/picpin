@@ -46,30 +46,48 @@ struct ExportBarView: View {
         .controlSize(.regular)
     }
 
-    private func renderedImage() -> CGImage? {
-        CompositionRenderer.render(store.composition, outputWidth: store.resolvedOutputWidth)
-    }
-
     private func copyToClipboard() {
-        guard let img = renderedImage() else { return }
-        ImageExporter.copyToClipboard(img)
-        copied = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+        let composition = store.composition
+        let width = store.resolvedOutputWidth
+        Task.detached(priority: .userInitiated) {
+            guard let img = CompositionRenderer.render(composition, outputWidth: width) else { return }
+            await MainActor.run {
+                ImageExporter.copyToClipboard(img)
+                copied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+            }
+        }
     }
 
     private func exportToFile() {
-        guard let img = renderedImage(),
-              let data = ImageExporter.encode(img, format: store.exportFormat) else { return }
+        // 先让用户确认保存位置，取消时不做渲染/编码（终审 Important 3）
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [store.exportFormat == .png ? .png : .jpeg]
-        let ext = store.exportFormat == .png ? "png" : "jpg"
+        let format = store.exportFormat
+        panel.allowedContentTypes = [format == .png ? .png : .jpeg]
+        let ext = format == .png ? "png" : "jpg"
         panel.nameFieldStringValue = "PicPin-\(Int(Date().timeIntervalSince1970)).\(ext)"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try data.write(to: url)
-        } catch {
-            let alert = NSAlert(error: error)
-            alert.runModal()
+
+        let composition = store.composition
+        let width = store.resolvedOutputWidth
+        Task.detached(priority: .userInitiated) {
+            guard let img = CompositionRenderer.render(composition, outputWidth: width),
+                  let data = ImageExporter.encode(img, format: format) else {
+                await MainActor.run {
+                    let alert = NSAlert()
+                    alert.messageText = "导出失败"
+                    alert.informativeText = "图片渲染或编码失败，请检查目标比例是否过于极端。"
+                    _ = alert.runModal()
+                }
+                return
+            }
+            do {
+                try data.write(to: url)
+            } catch {
+                await MainActor.run {
+                    _ = NSAlert(error: error).runModal()
+                }
+            }
         }
     }
 }

@@ -22,7 +22,7 @@ struct MainWindowView: View {
         }
         .frame(minWidth: 960, minHeight: 640)
         .dropDestination(for: URL.self) { urls, _ in
-            store.addImages(from: urls)
+            store.addImagesInBackground(from: urls)
             return true
         } isTargeted: { hovering in
             dropHovering = hovering
