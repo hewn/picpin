@@ -84,6 +84,17 @@ enum LayoutEngine {
                 srcX = axisOrigin(alignment: policy.alignment, imageLen: imgW, keepLen: srcW)
                 cropped = true
             }
+            // 副轴（对齐不生效）：溢出时居中裁剪
+            if direction == .vertical, imgW * scale > strip.width + eps {
+                srcW = strip.width / scale
+                srcX = (imgW - srcW) / 2
+                cropped = true
+            }
+            if direction == .horizontal, imgH * scale > strip.height + eps {
+                srcH = strip.height / scale
+                srcY = (imgH - srcH) / 2
+                cropped = true
+            }
             let src = cropped ? CGRect(x: srcX, y: srcY, width: srcW, height: srcH) : nil
             return SlicePlacement(itemID: item.id, destination: strip, sourceRect: src, fittedFrame: strip)
         case .fit:

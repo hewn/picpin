@@ -110,3 +110,79 @@ final class LayoutEngineTests: XCTestCase {
         XCTAssertEqual(r.canvasSize.width, 1000, accuracy: 0.001)
     }
 }
+
+// MARK: - Task 4：水平布局与极端输入
+
+extension LayoutEngineTests {
+    // 水平：16:9 画布 1000x562.5，两图 x 方向排布，对齐作用于 x
+    func testHorizontalLayoutAndAlignment() throws {
+        var c = Composition()
+        c.direction = .horizontal
+        c.aspectRatio = RatioPresets.r16x9                   // 默认 3:4 会得到 1333 高的画布
+        c.items = [makeItem(50, 100), makeItem(50, 100)]     // 竖图
+        c.policies = [
+            c.items[0].id: SlicePolicy(mode: .fill, alignment: .start),
+            c.items[1].id: SlicePolicy(mode: .fill, alignment: .end),
+        ]
+        let r = LayoutEngine.layout(c)
+        let H = 1000 * 9.0 / 16.0                             // 562.5
+        assertRect(r.placements[0].destination, CGRect(x: 0, y: 0, width: 500, height: H))
+        XCTAssertEqual(r.placements[1].destination.minX, 500, accuracy: 0.5)
+        // 条带 500x562.5，图 50x100：scale = max(10, 5.625) = 10 → 显示 500x1000
+        // x（主轴）恰好贴合；y（副轴）溢出 437.5 → 必须居中裁剪，否则整图绘制进条带会变形
+        for p in r.placements {
+            let src = try XCTUnwrap(p.sourceRect, "副轴(y)溢出时必须裁剪，sourceRect 不得为 nil")
+            XCTAssertEqual(src.width, 50, accuracy: 0.5)          // x 全保留
+            XCTAssertEqual(src.height, 562.5 / 10, accuracy: 0.5) // 源保留高 56.25
+            XCTAssertEqual(src.minY, (100 - 562.5 / 10) / 2, accuracy: 0.5) // 副轴居中
+            XCTAssertEqual(src.minX, 0, accuracy: 0.5)
+            assertRect(p.fittedFrame, p.destination)
+        }
+    }
+
+    func testHorizontalFit() {
+        var c = Composition()
+        c.direction = .horizontal
+        c.items = [makeItem(20, 100)]
+        c.aspectRatio = RatioPresets.r1x1                    // 1000x1000，单条带 1000x1000
+        c.policies = [c.items[0].id: SlicePolicy(mode: .fit, alignment: .center)]
+        let r = LayoutEngine.layout(c)
+        let p = r.placements[0]
+        XCTAssertEqual(p.fittedFrame.width, 200, accuracy: 0.5)   // scale = 1000/100 = 10 → 20*10
+        XCTAssertEqual(p.fittedFrame.height, 1000, accuracy: 0.5)
+    }
+
+    // 极端比例 20:1 水平画布 + 竖图：sourceRect 必须在图内、非负、非空
+    func testExtremeRatioClipsSourceRectToImageBounds() {
+        var c = Composition()
+        c.direction = .vertical
+        c.items = [makeItem(100, 800)]                        // 竖长图
+        c.aspectRatio = .custom(20, 1)                        // 画布 1000x50
+        let r = LayoutEngine.layout(c)
+        let src = try! XCTUnwrap(r.placements[0].sourceRect)
+        XCTAssertGreaterThanOrEqual(src.minX, 0)
+        XCTAssertGreaterThanOrEqual(src.minY, 0)
+        XCTAssertLessThanOrEqual(src.maxX, 100 + 0.5)
+        XCTAssertLessThanOrEqual(src.maxY, 800 + 0.5)
+        XCTAssertGreaterThan(src.width, 0)
+        XCTAssertGreaterThan(src.height, 0)
+    }
+
+    // 1 像素图：不除零、几何有效
+    func testTinyImageProducesValidPlacement() {
+        var c = Composition()
+        c.items = [makeItem(1, 1)]
+        c.aspectRatio = RatioPresets.r1x1
+        let r = LayoutEngine.layout(c)
+        assertRect(r.placements[0].destination, CGRect(x: 0, y: 0, width: 1000, height: 1000))
+        // fill + center：scale=1000，主轴贴合无裁剪
+        XCTAssertNil(r.placements[0].sourceRect)
+    }
+
+    func testSingleImageNoBoundaryCrash() {
+        var c = Composition()
+        c.items = [makeItem(100, 100)]
+        c.setBoundary(0, share: 0.5)                          // 越界 index → 不崩溃不修改
+        XCTAssertEqual(c.normalizedWeights[0], 1.0, accuracy: 1e-9)
+    }
+}
