@@ -37,7 +37,7 @@ struct MainWindowView: View {
             .padding(.bottom, 12)
             .padding(.top, 6)
         }
-        .frame(minWidth: 980, minHeight: 660)
+        .frame(minWidth: 1120, minHeight: 720)
         .onAppear {
             if keyMonitor == nil {
                 keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in

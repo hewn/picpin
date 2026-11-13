@@ -146,6 +146,7 @@ private struct CanvasScaleBarView: View {
             .padding(.vertical, 6)
             .liquidGlassPanel(cornerRadius: 18)
             .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
+            .fixedSize()
         }
     }
 }
@@ -259,6 +260,10 @@ struct CanvasContentView: View {
                         }
                         .onEnded { _ in dragBase = nil }
                 )
+                .onTapGesture(count: 2) {
+                    store.resetToEven()
+                }
+                .help("拖拽微调占比，双击恢复均分")
                 .position(x: x, y: y)
         }
     }
@@ -291,6 +296,11 @@ private struct BoundaryHandle: View {
             if inside {
                 (vertical ? NSCursor.resizeUpDown : NSCursor.resizeLeftRight).set()
             } else {
+                NSCursor.arrow.set()
+            }
+        }
+        .onDisappear {
+            if hovering {
                 NSCursor.arrow.set()
             }
         }

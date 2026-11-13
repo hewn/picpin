@@ -16,7 +16,8 @@ struct ImageListView: View {
                 }
                 .liquidGlassButtonStyle()
                 .controlSize(.small)
-                .help("添加图片")
+                .keyboardShortcut("o", modifiers: .command)
+                .help("添加图片 (⌘O)")
 
                 if !store.composition.items.isEmpty {
                     Button {

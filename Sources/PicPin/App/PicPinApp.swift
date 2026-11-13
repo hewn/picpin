@@ -35,6 +35,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.applicationIconImage = icon
         }
         NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async {
+            Self.ensureMinimumWindowSize()
+        }
+    }
+
+    @MainActor
+    private static func ensureMinimumWindowSize() {
+        for window in NSApp.windows {
+            window.contentMinSize = NSSize(width: 1120, height: 720)
+            let frame = window.frame
+            if frame.width < 1160 || frame.height < 740 {
+                let visible = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+                let targetW = min(max(frame.width, 1220), visible?.width ?? 1220)
+                let targetH = min(max(frame.height, 780), visible?.height ?? 780)
+                window.setContentSize(NSSize(width: targetW, height: targetH))
+                window.center()
+            }
+        }
     }
 
     /// 点击窗口左上角 × 关闭主窗口时直接退出应用，避免空进程残留后台无法重新唤起
@@ -63,8 +81,9 @@ struct PicPinApp: App {
     var body: some Scene {
         WindowGroup {
             MainWindowView()
-                .frame(minWidth: 980, minHeight: 660)
+                .frame(minWidth: 1120, minHeight: 720)
         }
+        .defaultSize(width: 1220, height: 780)
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .appInfo) {

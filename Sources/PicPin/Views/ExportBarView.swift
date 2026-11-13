@@ -22,20 +22,29 @@ struct ExportBarView: View {
             .frame(width: 168)
             .labelsHidden()
 
-            Picker("宽度", selection: $store.exportWidth) {
-                Text("1080w").tag(1080)
-                Text("1242w").tag(1242)
-                Text("1440w").tag(1440)
-                Text("2048w").tag(2048)
-                Text("原始宽").tag(0)
+            Picker("宽度", selection: $store.exportWidthOption) {
+                Text(ExportWidthOption.original.label).tag(ExportWidthOption.original)
+                Divider()
+                ForEach(ExportWidthOption.fixedPresets, id: \.self) { w in
+                    let opt = ExportWidthOption.fixed(w)
+                    Text(opt.label).tag(opt)
+                }
+                Divider()
+                ForEach(ExportWidthOption.percentPresets, id: \.self) { pct in
+                    let opt = ExportWidthOption.percent(pct)
+                    Text(opt.label).tag(opt)
+                }
             }
-            .frame(width: 100)
+            .frame(width: 90)
             .labelsHidden()
+            .help("选择导出宽度或按原图百分比缩放")
 
             if !outputDimensionText.isEmpty {
                 Text(outputDimensionText)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
             }
 
             Spacer(minLength: 12)
@@ -48,6 +57,7 @@ struct ExportBarView: View {
             }
             .liquidGlassButtonStyle()
             .fixedSize()
+            .keyboardShortcut("c", modifiers: .command)
             .disabled(store.composition.items.isEmpty)
 
             Button {
@@ -57,6 +67,7 @@ struct ExportBarView: View {
             }
             .liquidGlassButtonStyle(prominent: true)
             .fixedSize()
+            .keyboardShortcut("s", modifiers: .command)
             .disabled(store.composition.items.isEmpty)
         }
         .controlSize(.regular)

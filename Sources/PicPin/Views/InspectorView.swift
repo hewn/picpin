@@ -79,9 +79,10 @@ struct InspectorView: View {
     }
 
     private func applyCustomRatio() {
-        if let w = Double(customW), let h = Double(customH), w > 0, h > 0 {
-            store.composition.aspectRatio = .custom(w, h)
-        }
+        guard let w = Double(customW), let h = Double(customH), w > 0, h > 0 else { return }
+        let ratio = w / h
+        guard ratio >= 0.05 && ratio <= 20 else { return }
+        store.composition.aspectRatio = .custom(w, h)
     }
 
     private func ratioChip(_ r: AspectRatio) -> some View {
@@ -192,6 +193,11 @@ struct InspectorView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                value.wrappedValue = 0
+            }
+            .help("双击重置为 0")
             Slider(value: value, in: range)
         }
     }

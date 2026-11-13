@@ -3,11 +3,35 @@ import Combine
 import Foundation
 import UniformTypeIdentifiers
 
+enum ExportWidthOption: Hashable, Identifiable {
+    case original
+    case fixed(Int)      // 1080, 1440, 2048
+    case percent(Int)    // 25, 50, 75, 100
+
+    var id: String { label }
+
+    var label: String {
+        switch self {
+        case .original: return "原始"
+        case .fixed(let w): return "\(w)"
+        case .percent(let pct): return "\(pct)%"
+        }
+    }
+
+    static let fixedPresets: [Int] = [1080, 1440, 2048]
+    static let percentPresets: [Int] = [25, 50, 75, 100]
+
+    static let allOptions: [ExportWidthOption] =
+        [.original]
+        + fixedPresets.map { .fixed($0) }
+        + percentPresets.map { .percent($0) }
+}
+
 @MainActor
 final class CompositionStore: ObservableObject {
     @Published var composition = Composition()
     @Published var selectedID: UUID?
-    @Published var exportWidth: Int = 1242                   // 0 = 原始最大宽度
+    @Published var exportWidthOption: ExportWidthOption = .original
     @Published var exportFormat: ImageExporter.Format = .png
     @Published var lastIgnoredCount = 0
     /// 默认勾选：修改策略时同步应用到全部图片；取消勾选时仅作用于当前选中图片
@@ -269,9 +293,32 @@ final class CompositionStore: ObservableObject {
         composition.policies[id] = p
     }
 
+    var exportWidth: Int {
+        get {
+            switch exportWidthOption {
+            case .fixed(let w): return w
+            case .original, .percent: return 0
+            }
+        }
+        set {
+            exportWidthOption = newValue > 0 ? .fixed(newValue) : .original
+        }
+    }
+
+    var baseOriginalWidth: Int {
+        composition.items.map { Int($0.pixelSize.width) }.max() ?? 1000
+    }
+
     var resolvedOutputWidth: Int {
-        if exportWidth > 0 { return exportWidth }
-        return composition.items.map { Int($0.pixelSize.width) }.max() ?? 1000
+        switch exportWidthOption {
+        case .original:
+            return max(1, baseOriginalWidth)
+        case .fixed(let w):
+            return max(1, w)
+        case .percent(let pct):
+            let scale = Double(max(1, pct)) / 100.0
+            return max(1, Int((Double(baseOriginalWidth) * scale).rounded()))
+        }
     }
 
     private nonisolated static func isImageURL(_ url: URL) -> Bool {

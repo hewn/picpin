@@ -96,10 +96,28 @@ final class StoreTests: XCTestCase {
 
     func testResolvedOutputWidthOriginal() throws {
         let (store, urls) = try storeWithFiles(1)
+        XCTAssertEqual(
+            ExportWidthOption.allOptions,
+            [.original, .fixed(1080), .fixed(1440), .fixed(2048),
+             .percent(25), .percent(50), .percent(75), .percent(100)]
+        )
+        XCTAssertEqual(
+            ExportWidthOption.allOptions.map(\.label),
+            ["原始", "1080", "1440", "2048", "25%", "50%", "75%", "100%"]
+        )
+        XCTAssertEqual(store.exportWidthOption, .original)    // 默认原始宽
+
         store.addImages(from: urls)                           // 100px 宽图
-        store.exportWidth = 0                                 // 0 = 原始
         XCTAssertEqual(store.resolvedOutputWidth, 100)
-        store.exportWidth = 1440
-        XCTAssertEqual(store.resolvedOutputWidth, 1440)
+
+        for pct in [25, 50, 75, 100] {
+            store.exportWidthOption = .percent(pct)
+            XCTAssertEqual(store.resolvedOutputWidth, pct)
+        }
+
+        for w in [1080, 1440, 2048] {
+            store.exportWidthOption = .fixed(w)
+            XCTAssertEqual(store.resolvedOutputWidth, w)
+        }
     }
 }
