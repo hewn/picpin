@@ -16,10 +16,11 @@ enum AboutPanel {
                 .paragraphStyle: pStyle
             ]
         )
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.1"
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "PicPin",
-            .applicationVersion: "0.2.0",
+            .applicationVersion: version,
             .version: "Liquid Glass",
             .credits: credits
         ])
